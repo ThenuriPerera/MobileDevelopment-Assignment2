@@ -1,47 +1,209 @@
 package com.example.assignment2
 
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.example.assignment2.ui.theme.Assignment2Theme
+import java.io.File
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
         setContent {
             Assignment2Theme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                CameraApp()
             }
         }
     }
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun CameraApp() {
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    Assignment2Theme {
-        Greeting("Android")
+    val context = LocalContext.current
+
+    var capturedPhoto by remember {
+        mutableStateOf<File?>(null)
+    }
+
+    var pendingPhoto by remember {
+        mutableStateOf<File?>(null)
+    }
+
+    // Launch the Android system camera
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+    ) { success ->
+
+        if (success) {
+            capturedPhoto = pendingPhoto
+        } else {
+            pendingPhoto?.delete()
+        }
+    }
+
+    // Main application interface
+    Scaffold(
+        modifier = Modifier.fillMaxSize()
+    ) { innerPadding ->
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+
+            Text(
+                text = "Simple Camera App",
+                style = MaterialTheme.typography.headlineMedium
+            )
+
+            Spacer(modifier = Modifier.height(25.dp))
+
+            // Display captured photograph
+            val bitmap = remember(capturedPhoto) {
+                capturedPhoto?.let {
+                    BitmapFactory.decodeFile(it.absolutePath)
+                        ?.asImageBitmap()
+                }
+            }
+
+            if (bitmap != null) {
+
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Captured Photograph",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(350.dp),
+                    contentScale = ContentScale.Fit
+                )
+
+            } else {
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No photograph captured yet")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(25.dp))
+
+            // Open Camera button
+            Button(
+                onClick = {
+
+                    val directory = context.getExternalFilesDir(
+                        Environment.DIRECTORY_PICTURES
+                    )
+
+                    if (directory != null) {
+
+                        val photoFile = File.createTempFile(
+                            "IMG_",
+                            ".jpg",
+                            directory
+                        )
+
+                        pendingPhoto = photoFile
+
+                        val photoUri: Uri =
+                            FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                photoFile
+                            )
+
+                        cameraLauncher.launch(photoUri)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Open Camera")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Share photograph button
+            Button(
+                onClick = {
+
+                    capturedPhoto?.let { photo ->
+
+                        val photoUri =
+                            FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                photo
+                            )
+
+                        val shareIntent = Intent(
+                            Intent.ACTION_SEND
+                        ).apply {
+
+                            type = "image/jpeg"
+
+                            putExtra(
+                                Intent.EXTRA_STREAM,
+                                photoUri
+                            )
+
+                            clipData = android.content.ClipData.newUri(
+                                context.contentResolver,
+                                "Captured Photo",
+                                photoUri
+                            )
+
+                            addFlags(
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                        }
+
+                        context.startActivity(
+                            Intent.createChooser(
+                                shareIntent,
+                                "Share Photograph"
+                            )
+                        )
+                    }
+                },
+                enabled = capturedPhoto != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Share Photo")
+            }
+        }
     }
 }
