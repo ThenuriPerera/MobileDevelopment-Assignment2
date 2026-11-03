@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -42,12 +43,12 @@ fun CameraApp() {
 
     val context = LocalContext.current
 
-    var capturedPhoto by remember {
-        mutableStateOf<File?>(null)
+    var capturedPhotoPath by rememberSaveable {
+        mutableStateOf<String?>(null)
     }
 
-    var pendingPhoto by remember {
-        mutableStateOf<File?>(null)
+    var pendingPhotoPath by rememberSaveable {
+        mutableStateOf<String?>(null)
     }
 
     // Launch the Android system camera
@@ -56,9 +57,9 @@ fun CameraApp() {
     ) { success ->
 
         if (success) {
-            capturedPhoto = pendingPhoto
+            capturedPhotoPath = pendingPhotoPath
         } else {
-            pendingPhoto?.delete()
+            pendingPhotoPath?.let { File(it).delete() }
         }
     }
 
@@ -84,10 +85,9 @@ fun CameraApp() {
             Spacer(modifier = Modifier.height(25.dp))
 
             // Display captured photograph
-            val bitmap = remember(capturedPhoto) {
-                capturedPhoto?.let {
-                    BitmapFactory.decodeFile(it.absolutePath)
-                        ?.asImageBitmap()
+            val bitmap = remember(capturedPhotoPath) {
+                capturedPhotoPath?.let { path ->
+                    BitmapFactory.decodeFile(path)?.asImageBitmap()
                 }
             }
 
@@ -137,7 +137,7 @@ fun CameraApp() {
                             directory
                         )
 
-                        pendingPhoto = photoFile
+                        pendingPhotoPath = photoFile.absolutePath
 
                         val photoUri: Uri =
                             FileProvider.getUriForFile(
@@ -160,46 +160,52 @@ fun CameraApp() {
             Button(
                 onClick = {
 
-                    capturedPhoto?.let { photo ->
+                    capturedPhotoPath?.let { path ->
 
-                        val photoUri =
-                            FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                photo
-                            )
+                        val photoFile = File(path)
 
-                        val shareIntent = Intent(
-                            Intent.ACTION_SEND
-                        ).apply {
+                        if (photoFile.exists()) {
 
-                            type = "image/jpeg"
+                            val photoUri =
+                                FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    photoFile
+                                )
 
-                            putExtra(
-                                Intent.EXTRA_STREAM,
-                                photoUri
-                            )
+                            val shareIntent = Intent(
+                                Intent.ACTION_SEND
+                            ).apply {
 
-                            clipData = android.content.ClipData.newUri(
-                                context.contentResolver,
-                                "Captured Photo",
-                                photoUri
-                            )
+                                type = "image/jpeg"
 
-                            addFlags(
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-                        }
+                                putExtra(
+                                    Intent.EXTRA_STREAM,
+                                    photoUri
+                                )
 
-                        context.startActivity(
-                            Intent.createChooser(
+                                clipData = android.content.ClipData.newRawUri(
+                                    "Captured Photo",
+                                    photoUri
+                                )
+
+                                addFlags(
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            }
+
+                            val chooserIntent = Intent.createChooser(
                                 shareIntent,
                                 "Share Photograph"
-                            )
-                        )
+                            ).apply {
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+
+                            context.startActivity(chooserIntent)
+                        }
                     }
                 },
-                enabled = capturedPhoto != null,
+                enabled = capturedPhotoPath != null,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Share Photo")
